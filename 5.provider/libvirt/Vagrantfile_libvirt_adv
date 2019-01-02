@@ -1,0 +1,87 @@
+ENV["LC_ALL"] = "en_US.UTF-8"
+
+_box = 'peru/ubuntu-14.04-server-amd64'
+
+_nodes = [
+  {
+    :index => 0,
+    :hostname => 'vm1',
+    :private_ip => '172.20.20.6',
+    :public_ip => '192.168.123.117',
+    :public_netmask => '255.255.252.0',
+    :public_gateway => '192.168.120.254',
+    :cpus => 2,
+    :memory => 1024
+  },
+#  {
+#    :index => 1,
+#    :hostname => 'vm2',
+#    :private_ip => '172.20.20.7',
+#    :public_ip => '192.168.123.117',
+#    :public_netmask => '255.255.252.0',
+#    :public_gateway => '192.168.120.254',
+#    :cpus => 2,
+#    :memory => 1024
+#  }
+]
+
+Vagrant.configure("2") do |config|
+  _nodes.each do |node|
+    config.vm.define node[:hostname] do |srv|
+      srv.vm.box = _box
+      srv.vm.box_check_update = false
+      srv.vm.hostname = node[:hostname]
+      srv.vm.synced_folder ".", "/vagrant", disabled: true
+
+      srv.vm.network :private_network,
+       #:libvirt__forward_mode => 'nat'
+       #:libvirt__forward_device => 'eno2
+        :libvirt__network_name => 'private_172_20_20_0',
+        :ip => node[:private_ip]
+      srv.vm.network :public_network,
+        :ip => node[:public_ip],
+        :netmask => node[:public_netmask],
+        :gateway => node[:public_gateway],
+        :dev => 'br0',
+        :type => 'bridge',
+        :mode => 'bridge'
+
+      #srv.vm.network :private_network,
+      #  :libvirt__network_name => 'robin_private_172_20_20_0',
+      #  :ip => node[:private_ip],
+      #  :libvirt__forward_mode => 'nat'
+      #  :libvirt__forward_device => 'eno2'
+      #srv.vm.network :public_network,
+      #  :dev => 'eno2',
+      #  :type => 'nat',
+      #  :mode => 'bridge'
+
+      srv.vm.network "forwarded_port",
+        :guest => 80,
+        :host => 8080,
+       #:host => "808#{node[:index]}",
+        :guest_ip => "0.0.0.0",
+        :host_ip => "0.0.0.0",
+        :auto_correct => true
+
+      srv.vm.provision "setting dns-nameserver",
+        :type => "shell",
+        :preserve_order => true,
+        :inline => "echo 'nameserver 8.8.8.8' > /etc/resolvconf/resolv.conf.d/head; resolvconf -u"
+
+      srv.vm.provider :libvirt do |lv|
+        lv.driver = 'kvm'
+        #lv.host = ''
+        lv.cpus = node[:cpus]
+        lv.memory = node[:memory]
+        lv.volume_cache = 'none'
+        lv.management_network_name = 'libvirt_mgmt_172.20.10_0'
+        lv.management_network_address = '172.20.10.0/24'
+        lv.management_network_mode = 'none'
+       #lv.management_network_mode = 'nat'
+      end
+
+    end
+  end
+end
+

@@ -1,0 +1,10 @@
+## Require
+box_name: ubuntu/xenial64
+box_hostname: devstack
+cpus: 2
+memory: 2048
+
+## Optional
+#box_url:
+#box_version:
+#local_sync_folder: ./vagrant

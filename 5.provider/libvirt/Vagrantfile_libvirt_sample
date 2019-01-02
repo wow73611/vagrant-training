@@ -1,0 +1,28 @@
+Vagrant.configure("2") do |config|
+
+  config.vm.define :server do |srv|
+    srv.vm.box = "peru/ubuntu-14.04-server-amd64"
+    srv.vm.network :private_network,
+      :ip => "172.20.10.7",
+      :network_name => "private_net"
+    srv.vm.network :public_network,
+      :ip => "192.168.123.177",
+      :netmask => "255.255.252.0",
+      :gateway => "192.168.120.254",
+      :dev => "br0",
+      :mode => "bridge",
+      :type => "bridge",
+      :network_name => "public_net"
+  end
+  
+  config.vm.provider :libvirt do |lv|
+    lv.memory = 2048
+    lv.cpus = 2
+    lv.nested = true
+    lv.volume_cache = "none"
+    lv.cpu_mode = "host-passthrough"
+    lv.management_network_name = 'libvirt_mgmt_172_20_11_0'
+    lv.management_network_address = '172.20.11.0/24'
+    lv.management_network_mode = 'none'
+  end
+end
