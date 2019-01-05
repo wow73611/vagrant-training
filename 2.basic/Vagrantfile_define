@@ -1,0 +1,31 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure("2") do |config|
+
+  config.vm.define "linux_node" do |node|
+    node.vm.box = "ubuntu/xenial64"
+
+    # node.vm.network "forwarded_port", guest: 80, host: 8080
+    # node.vm.network "private_network", ip: "192.168.1.10", :netmask => "255.255.255.0", :auto_config => false
+    # node.vm.network "public_network"
+    
+    # node.vm.synced_folder "../data", "/vagrant_data"
+    
+    node.vm.provider "virtualbox" do |vb|
+      vb.cpus = 1
+      vb.memory = "1024"
+      vb.gui = true
+    end
+
+    # config.push.define "atlas" do |push|
+    #   push.app = "YOUR_ATLAS_USERNAME/YOUR_APPLICATION_NAME"
+    # end
+
+    # node.vm.provision "shell", inline: <<-SHELL
+    #   apt-get update
+    #   apt-get install -y apache2
+    # SHELL
+  end
+
+end
