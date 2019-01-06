@@ -1,0 +1,106 @@
+---
+
+vagrant_provider: "virtualbox"
+
+#vagrant_provider: "openstack"
+openstack_auth_url: "http://127.0.0.1:5000/v3"
+openstack_identity_api_version: "3"
+openstack_region: RegionOne
+openstack_username: robin
+openstack_password: robin
+openstack_tenant_name: robin_project
+openstack_project_name: robin_project
+openstack_domain_name: Default
+openstack_public_key_path: "./ssh_key/id_rsa.pub"
+openstack_private_key_path: "./ssh_key/id_rsa"
+#openstack_stacks:
+#  - name: "my-stack"
+#    path: "heat-stack.yml"
+openstack_mgmt_net: &mgmt_net
+  name: my-net
+  address: "192.168.8.0"
+
+init_scripts:
+  - "ansible-galaxy install -r ansible/requirements.yml -p ansible/roles -vvv"
+
+servers:
+  - name: vagrant-puppet-u14
+    virtualbox:
+      box_name: ubuntu/trusty64
+      box_hostname: vagrant-puppet-u14
+      cpus: 1
+      memory: 1024
+      private_network:
+        ip: "192.168.8.11"
+      ports:
+        - {guest: 80, host: 1180}
+    openstack:
+      flavor: "m1.large"
+      image: "trusty-server-cloudimg-amd64-disk1"
+      security_groups: ["my-sg"]
+      floating_ip_pool: ["Net-Pool"]
+      floating_ip: "192.168.243.11"
+      networks:
+        - <<: *mgmt_net
+          address: "192.168.8.11"
+    ssh_username: ubuntu
+    ansibles:
+      - playbook: "ansible/vagrant-puppet.yml"
+        groups:
+          puppet_nodes: ["vagrant-puppet-u14"]
+        extra_vars:
+          debug: false
+
+  - name: vagrant-puppet-u16
+    virtualbox:
+      box_name: ubuntu/xenial64
+      box_hostname: vagrant-puppet-u16
+      cpus: 1
+      memory: 1024
+      private_network:
+        ip: "192.168.8.12"
+      ports:
+        - {guest: 80, host: 1280}
+    openstack:
+      flavor: "m1.large"
+      image: "xenial-server-cloudimg-amd64-disk1"
+      security_groups: ["my-sg"]
+      floating_ip_pool: ["Net-Pool"]
+      floating_ip: "192.168.243.12"
+      networks:
+        - <<: *mgmt_net
+          address: "192.168.8.12"
+    ssh_username: ubuntu
+    ansibles:
+      - playbook: "ansible/vagrant-puppet.yml"
+        groups:
+          puppet_nodes: ["vagrant-puppet-u16"]
+        extra_vars:
+          debug: false
+
+  - name: vagrant-puppet-c7
+    virtualbox:
+      box_name: centos/7
+      box_hostname: vagrant-puppet-c7
+      cpus: 1
+      memory: 1024
+      private_network:
+        ip: "192.168.8.13"
+      ports:
+        - {guest: 80, host:1380}
+    openstack:
+      flavor: "m1.large"
+      image: "CentOS-7-x86_64-GenericCloud"
+      security_groups: ["my-sg"]
+      floating_ip_pool: ["Net-Pool"]
+      floating_ip: "192.168.243.13"
+      networks:
+        - <<: *mgmt_net
+          address: "192.168.8.13"
+    ssh_username: centos
+    ansibles:
+      - playbook: "ansible/vagrant-puppet.yml"
+        groups:
+          puppet_nodes: ["vagrant-puppet-c7"]
+        extra_vars:
+          debug: false

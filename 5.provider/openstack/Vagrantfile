@@ -1,28 +1,180 @@
 # -*- mode: ruby -*-
 # vi: set ft=ruby :
 
-Vagrant.configure("2") do |config|
-  config.vm.box = "ubuntu/xenial64"
-  config.vm.box_check_update = false
-  
-  config.vm.network "forwarded_port", guest: 80, host: 8080
-  # config.vm.network "private_network", ip: "192.168.33.10"
-  # config.vm.network "public_network"
-  
-  # config.vm.synced_folder "../data", "/vagrant_data"
-	
-  config.vm.provider "virtualbox" do |vb|
-	vb.cpus = 1
-    vb.memory = "1024"
-    vb.gui = true
+# Vagrantfile API/syntax version. Don't touch unless you know what you're doing!
+VAGRANTFILE_API_VERSION = "2" if not defined? VAGRANTFILE_API_VERSION
+
+conf = {}
+
+require 'yaml'
+conf_path = ENV.fetch('USER_CONF','config.yml')
+if File.file?(conf_path)
+    user_conf = YAML.load_file(File.join(File.dirname(__FILE__),conf_path))
+    conf.update(user_conf)
+else
+    raise "Configuration file #{conf_path} does not exist."
+end
+
+provider = conf["vagrant_provider"]
+puts "Hi guys! You are running #{provider}"
+
+if provider == "openstack"
+  # see also: https://github.com/ggiamarchi/vagrant-openstack-provider
+  require 'vagrant-openstack-provider'
+end
+
+
+def init_script(config, conf_scripts)
+  conf_scripts.each do |shell_script|
+    system shell_script
+  end
+end
+
+def openstack_init(config, conf)
+  config.vm.provider :openstack do |os, override|
+    # Credentials
+    os.openstack_auth_url   = conf["openstack_auth_url"]
+    os.identity_api_version = conf["openstack_identity_api_version"]
+    os.region               = conf["openstack_region"]
+    os.username             = conf["openstack_username"]
+    os.password             = conf["openstack_password"]
+    os.tenant_name          = conf["openstack_tenant_name"]
+    os.project_name         = conf["openstack_project_name"]
+    os.domain_name          = conf["openstack_domain_name"]
+    # SSH authentication
+    #os.keypair_name        = "vagrant-keypair"
+    os.public_key_path      = conf["openstack_public_key_path"]
+    override.ssh.private_key_path = conf["openstack_private_key_path"]
+    #override.ssh.username = "ubuntu"
+    # Orchestration Stacks
+    if conf["openstack_stacks"]
+      stacks = []
+      conf["openstack_stacks"].each do |conf_stack|
+        stacks.push({"name": conf_stack["name"], "template": "#{File.dirname(__FILE__)}/"+conf_stack["path"]})
+      end
+      os.stacks = stacks
+    end
+  end
+end
+
+def openstack_provider(srv, conf_srv)
+  conf_os = conf_srv["openstack"]
+  srv.vm.provider :openstack do |os, override|
+    # VM Configuration
+    os.server_name        = conf_srv["name"]
+    os.flavor             = conf_os["flavor"]
+    os.image              = conf_os["image"]
+    os.security_groups    = conf_os["security_groups"]
+    # Floating IPs
+    os.floating_ip        = conf_os["floating_ip"] if conf_os["floating_ip"]
+    os.floating_ip_pool   = conf_os["floating_ip_pool"] if conf_os["floating_ip_pool"]
+    # Networks
+    conf_os["networks"].each do |conf_os_network|
+      os.networks.push({"name": conf_os_network["name"], "address": conf_os_network["address"]})
+    end
+    # Vagrant standard configuration
+    override.ssh.username = conf_srv["ssh_username"]
+  end
+end
+
+def virtualbox_provider(srv, conf_srv)
+  conf_vb = conf_srv["virtualbox"]
+  srv.vm.box = conf_vb["box_name"]
+  srv.vm.box_url = conf_vb["box_url"] if conf_vb["box_url"]
+  srv.vm.box_version = conf_vb["box_version"] if conf_vb["box_version"]
+  srv.vm.hostname = conf_vb["box_hostname"]
+
+  srv.vm.provider :virtualbox do |vb, override|
+      vb.customize ["modifyvm", :id, "--cpus", conf_vb['cpus']]
+      vb.customize ["modifyvm", :id, "--memory", conf_vb['memory']]
+      vb.customize ["modifyvm", :id, "--ioapic", "on"]
+      vb.customize ["modifyvm", :id, "--nicpromisc3", "allow-all"]
+
+      # change the network card hardware for better performance
+      vb.customize ["modifyvm", :id, "--nictype1", "virtio" ]
+      vb.customize ["modifyvm", :id, "--nictype2", "virtio" ]
+
+      # suggested fix for slow network performance
+      # see https://github.com/mitchellh/vagrant/issues/1807
+      vb.customize ["modifyvm", :id, "--natdnshostresolver1", "on"]
+      vb.customize ["modifyvm", :id, "--natdnsproxy1", "on"]
   end
 
-  # config.push.define "atlas" do |push|
-  #   push.app = "YOUR_ATLAS_USERNAME/YOUR_APPLICATION_NAME"
-  # end
+  if defined? conf_vb["private_network"]["ip"]
+    srv.vm.network :private_network, ip: conf_vb["private_network"]["ip"]
+  end
 
-  config.vm.provision "shell", inline: <<-SHELL
-    apt-get update
-    apt-get install -y apache2
-  SHELL
+  if defined? conf_vb["public_network"]["ip"]
+    srv.vm.network :public_network, ip: conf_vb["public_network"]["ip"]
+  end
+
+  if conf_vb["ports"]
+    conf_vb["ports"].each do |conf_vb_port|
+      srv.vm.network :forwarded_port, guest: conf_vb_port["guest"], host: conf_vb_port["host"], auto_correct: true
+    end
+  end
+end
+
+def shell_provision(srv, conf_srv)
+  conf_srv.each do |conf_srv_shell|
+    srv.vm.provision "shell", path: conf_srv_shell
+    #srv.vm.provision :shell, :inline => "sudo apt-get update"
+  end
+end
+
+def ansible_provision(srv, conf_srv)
+  conf_srv["ansibles"].each do |conf_srv_ansible|
+    srv.vm.provision :ansible do |ansible|
+      ansible.host_key_checking = false
+      ansible.playbook = conf_srv_ansible["playbook"]
+      ansible.verbose = conf_srv_ansible["verbose"] if conf_srv_ansible["verbose"]
+      ansible.limit = conf_srv_ansible["limit"] if conf_srv_ansible["limit"]
+      ansible.tags = conf_srv_ansible["tags"] if conf_srv_ansible["tags"]
+      ansible.groups = conf_srv_ansible["groups"] if conf_srv_ansible["groups"]
+      ansible.extra_vars = conf_srv_ansible["extra_vars"] if conf_srv_ansible["extra_vars"]
+      ansible.raw_arguments = conf_srv_ansible["raw_arguments"] if conf_srv_ansible["raw_arguments"]
+    end
+  end
+end
+
+
+Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
+  # resolve "stdin: is not a tty warning", related issue and proposed
+  # fix: https://github.com/mitchellh/vagrant/issues/1673
+  config.ssh.shell = "bash -c 'BASH_ENV=/etc/profile exec bash'"
+  config.ssh.forward_agent = true
+
+  if conf["init_scripts"]
+    init_script(config,conf["init_scripts"])
+  end
+
+  if provider == "openstack"
+    openstack_init(config,conf)
+  end
+
+  conf["servers"].each do |conf_srv|
+    config.vm.define conf_srv["name"] do |srv|
+      srv.vm.synced_folder ".", "/vagrant", disabled: true
+
+      if provider == "virtualbox"
+        virtualbox_provider(srv,conf_srv)
+      end
+
+      if provider == "openstack"
+        openstack_provider(srv,conf_srv)
+      end
+
+      if conf_srv["pre_shells"]
+        shell_provision(srv,conf_srv["pre_shells"])
+      end
+
+      if conf_srv["ansibles"]
+        ansible_provision(srv,conf_srv)
+      end
+
+      if conf_srv["post_shells"]
+        shell_provision(srv,conf_srv["post_shells"])
+      end
+    end
+  end
 end

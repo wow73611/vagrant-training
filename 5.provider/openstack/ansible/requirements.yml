@@ -1,0 +1,6 @@
+#ansible-galaxy install -r requirements.yml -p ./roles -vvv
+
+- src : https://github.com/wow73611/test.git
+  name: test
+  scm: git
+  version: develop

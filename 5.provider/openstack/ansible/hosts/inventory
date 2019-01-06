@@ -1,0 +1,6 @@
+# It's a example. Reference http://docs.ansible.com/ansible/latest/intro_inventory.html
+
+default ansible_ssh_host=127.0.0.1 ansible_ssh_port=22 ansible_ssh_user=root ansible_ssh_pass=password
+
+[puppet_nodes]
+default ansible_ssh_host=127.0.0.1 ansible_ssh_port=22 ansible_ssh_user=root ansible_ssh_pass=password
