@@ -1,0 +1,16 @@
+---
+
+vagrant_provider: "virtualbox"
+
+servers:
+  - name: ubuntu16
+    virtualbox:
+      box_name: ubuntu/xenial64
+      box_hostname: ubuntu16
+      cpus: 1
+      memory: 1024
+      private_network:
+        ip: "192.168.8.12"
+      ports:
+        - {guest: 80, host: 1280}
+    ssh_username: ubuntu

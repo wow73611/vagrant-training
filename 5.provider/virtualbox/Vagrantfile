@@ -1,0 +1,75 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+# Vagrantfile API/syntax version. Don't touch unless you know what you're doing!
+VAGRANTFILE_API_VERSION = "2" if not defined? VAGRANTFILE_API_VERSION
+
+conf = {}
+
+require 'yaml'
+conf_path = ENV.fetch('USER_CONF','config.yml')
+if File.file?(conf_path)
+    user_conf = YAML.load_file(File.join(File.dirname(__FILE__),conf_path))
+    conf.update(user_conf)
+else
+    raise "Configuration file #{conf_path} does not exist."
+end
+
+provider = conf["vagrant_provider"]
+puts "Hi guys! You are running #{provider}"
+
+def virtualbox_provider(srv, conf_srv)
+  conf_vb = conf_srv["virtualbox"]
+  srv.vm.box = conf_vb["box_name"]
+  srv.vm.box_url = conf_vb["box_url"] if conf_vb["box_url"]
+  srv.vm.box_version = conf_vb["box_version"] if conf_vb["box_version"]
+  srv.vm.hostname = conf_vb["box_hostname"]
+
+  srv.vm.provider :virtualbox do |vb, override|
+      vb.customize ["modifyvm", :id, "--cpus", conf_vb['cpus']]
+      vb.customize ["modifyvm", :id, "--memory", conf_vb['memory']]
+      vb.customize ["modifyvm", :id, "--ioapic", "on"]
+      vb.customize ["modifyvm", :id, "--nicpromisc3", "allow-all"]
+
+      # change the network card hardware for better performance
+      vb.customize ["modifyvm", :id, "--nictype1", "virtio" ]
+      vb.customize ["modifyvm", :id, "--nictype2", "virtio" ]
+
+      # suggested fix for slow network performance
+      # see https://github.com/mitchellh/vagrant/issues/1807
+      vb.customize ["modifyvm", :id, "--natdnshostresolver1", "on"]
+      vb.customize ["modifyvm", :id, "--natdnsproxy1", "on"]
+  end
+
+  if defined? conf_vb["private_network"]["ip"]
+    srv.vm.network :private_network, ip: conf_vb["private_network"]["ip"]
+  end
+
+  if defined? conf_vb["public_network"]["ip"]
+    srv.vm.network :public_network, ip: conf_vb["public_network"]["ip"]
+  end
+
+  if conf_vb["ports"]
+    conf_vb["ports"].each do |conf_vb_port|
+      srv.vm.network :forwarded_port, guest: conf_vb_port["guest"], host: conf_vb_port["host"], auto_correct: true
+    end
+  end
+end
+
+
+Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
+  # resolve "stdin: is not a tty warning", related issue and proposed
+  # fix: https://github.com/mitchellh/vagrant/issues/1673
+  config.ssh.shell = "bash -c 'BASH_ENV=/etc/profile exec bash'"
+  config.ssh.forward_agent = true
+
+  conf["servers"].each do |conf_srv|
+    config.vm.define conf_srv["name"] do |srv|
+      srv.vm.synced_folder ".", "/vagrant", disabled: true
+
+      if provider == "virtualbox"
+        virtualbox_provider(srv,conf_srv)
+      end
+    end
+  end
+end
